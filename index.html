@@ -120,7 +120,61 @@
     display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer;
     font-size: 14px; color: #12181C;
   }
-  .deuda-check.marcada { background: #67D07A; border-color: #67D07A; }
+  .deuda-check.marcada { background: #67D07A; border-color: #67D07A; animation: popCheck 0.3s ease; }
+  @keyframes popCheck { 0% { transform: scale(0.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+  /* ---- Hero total protagonista ---- */
+  .hero {
+    background: linear-gradient(160deg, #20262E 0%, #1D262A 100%);
+    border: 1px solid #2A313B; border-radius: 20px; padding: 26px 22px 22px;
+    text-align: center; margin-bottom: 16px; position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: repeating-linear-gradient(90deg, #4FD1C5 0 8px, transparent 8px 16px); opacity: 0.5;
+  }
+  .hero-label { font-size: 12px; color: #8B95A1; margin-bottom: 6px; }
+  .hero-value {
+    font-family: 'JetBrains Mono', monospace; font-weight: 800; letter-spacing: -0.03em;
+    font-size: 52px; color: #F5F7FA; line-height: 1.05;
+  }
+  .hero-sub { font-size: 12px; color: #5C6673; margin-top: 8px; }
+
+  /* ---- Donut chart ---- */
+  .donut-wrap { position: relative; width: 200px; height: 200px; margin: 8px auto 18px; }
+  .donut-ring { width: 100%; height: 100%; border-radius: 50%; }
+  .donut-hole {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 68%; height: 68%; border-radius: 50%; background: #20262E;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .donut-hole-value { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; color: #F5F7FA; }
+  .donut-hole-label { font-size: 10px; color: #6B7684; margin-top: 2px; text-align: center; }
+  .legend-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .legend-icon {
+    width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center;
+    justify-content: center; font-size: 15px; flex-shrink: 0;
+  }
+  .legend-main { flex: 1; min-width: 0; }
+  .legend-top { display: flex; justify-content: space-between; font-size: 13px; }
+  .legend-pct { font-size: 11px; color: #6B7684; }
+
+  /* ---- Animaciones ---- */
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeInUp 0.32s ease; }
+  .modal-backdrop {
+    display: flex; position: fixed; inset: 0; background: rgba(0,0,0,0);
+    align-items: flex-end; justify-content: center; z-index: 10;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s ease, background 0.25s ease;
+  }
+  .modal-backdrop.abierto { opacity: 1; pointer-events: auto; background: rgba(0,0,0,0.6); }
+  .modal {
+    background: #20262E; border-radius: 16px 16px 0 0; padding: 20px; width: 100%; max-width: 480px;
+    transform: translateY(100%); transition: transform 0.32s cubic-bezier(.22,1,.36,1);
+  }
+  .modal-backdrop.abierto .modal { transform: translateY(0); }
+  .tab { transition: background 0.2s ease, color 0.2s ease; }
+  .row, .panel { transition: opacity 0.25s ease; }
 </style>
 </head>
 <body>
@@ -142,6 +196,10 @@
     </div>
 
     <div id="vista-resumen">
+      <div id="hero-container"></div>
+
+      <div id="donut-container"></div>
+
       <div id="resumen-monedas"></div>
 
       <div id="limite-container"></div>
@@ -292,6 +350,31 @@
     return grupos;
   }
 
+  // ---- Categorización automática por palabras clave en el nombre del comercio ----
+  const CATEGORIAS = [
+    { id: "comida", icono: "🍔", color: "#F0A857", claves: ["mercado", "super", "devoto", "disco", "tata", "restaur", "comida", "panader", "almacen", "gourmet", "food", "burger", "pizza", "cafe"] },
+    { id: "transporte", icono: "🚕", color: "#8B9CF5", claves: ["uber", "cabify", "taxi", "combustible", "ancap", "petrobras", "estacion", "peaje", "stm", "nafta"] },
+    { id: "ocio", icono: "🎮", color: "#67D07A", claves: ["netflix", "spotify", "disney", "cine", "hbo", "google", "steam", "playstation", "xbox", "youtube", "paramount", "twitch"] },
+    { id: "servicios", icono: "💡", color: "#F0D857", claves: ["ute", "antel", "ose", "internet", "seguro", "gym", "cuota", "abono"] },
+    { id: "salud", icono: "💊", color: "#F26B6B", claves: ["farmacia", "farmashop", "hospital", "clinica", "salud"] },
+    { id: "compras", icono: "🛍️", color: "#B98BE0", claves: ["amazon", "shein", "aliexpress", "shop", "tienda", "mercadolibre", "mercado libre"] },
+  ];
+
+  function categorizar(establecimiento, tipo) {
+    const t = (tipo || "").toLowerCase();
+    if (t.includes("transferencia")) return { id: "transferencias", icono: "🔁", color: "#6B7684" };
+    if (t.includes("pago") && t.includes("tarjeta")) return { id: "pago de tarjeta", icono: "💳", color: "#4FD1C5" };
+    const nombre = quitarAcentosJS_((establecimiento || "").toLowerCase());
+    for (const cat of CATEGORIAS) {
+      if (cat.claves.some((clave) => nombre.includes(clave))) return cat;
+    }
+    return { id: "otros", icono: "🧾", color: "#5C6673" };
+  }
+
+  function quitarAcentosJS_(str) {
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+
   function renderizarTodo(data) {
     const gastos = data.gastos || [];
     const ingresos = data.ingresos || [];
@@ -305,6 +388,64 @@
     const ingresosPorMoneda = agruparPorMoneda(ingresosDelMes);
     const monedas = Array.from(new Set(Object.keys(gastosPorMoneda).concat(Object.keys(ingresosPorMoneda))));
     if (monedas.length === 0) monedas.push("UYU");
+
+    // ---- Hero: total gastado este mes, protagonista ----
+    const monedaPrincipal = gastosPorMoneda["UYU"] && gastosPorMoneda["UYU"].length ? "UYU" : (monedas[0] || "UYU");
+    const totalHero = (gastosPorMoneda[monedaPrincipal] || []).reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
+    document.getElementById("hero-container").innerHTML =
+      '<div class="hero">' +
+      '<div class="hero-label">💳 Total gastado este mes</div>' +
+      '<div class="hero-value">' + fmt(totalHero, monedaPrincipal) + '</div>' +
+      '<div class="hero-sub">' + (gastosPorMoneda[monedaPrincipal] || []).length + ' movimientos en ' + monedaPrincipal + '</div>' +
+      '</div>';
+
+    // ---- Donut de categorías (moneda principal) ----
+    const gastosPrincipales = gastosPorMoneda[monedaPrincipal] || [];
+    const porCategoria = {};
+    gastosPrincipales.forEach((g) => {
+      const cat = categorizar(g.establecimiento, g.tipo);
+      if (!porCategoria[cat.id]) porCategoria[cat.id] = { ...cat, total: 0 };
+      porCategoria[cat.id].total += (parseFloat(g.monto) || 0);
+    });
+    const categoriasOrdenadas = Object.values(porCategoria).sort((a, b) => b.total - a.total);
+    const donutContainer = document.getElementById("donut-container");
+
+    if (categoriasOrdenadas.length === 0) {
+      donutContainer.innerHTML = "";
+    } else {
+      const totalCat = categoriasOrdenadas.reduce((s, c) => s + c.total, 0);
+      let acumulado = 0;
+      const segmentos = categoriasOrdenadas.map((c) => {
+        const inicio = (acumulado / totalCat) * 100;
+        acumulado += c.total;
+        const fin = (acumulado / totalCat) * 100;
+        return c.color + " " + inicio + "% " + fin + "%";
+      }).join(", ");
+
+      const leyenda = categoriasOrdenadas.map((c) => {
+        const pct = Math.round((c.total / totalCat) * 100);
+        return (
+          '<div class="legend-item">' +
+          '<div class="legend-icon" style="background:' + c.color + '22; color:' + c.color + ';">' + c.icono + '</div>' +
+          '<div class="legend-main"><div class="legend-top">' +
+          '<span style="text-transform:capitalize;">' + c.id + '</span>' +
+          '<span style="font-family:\'JetBrains Mono\',monospace; color:#C4CBD4;">' + fmt(c.total, monedaPrincipal) + '</span>' +
+          '</div><div class="legend-pct">' + pct + '% del mes</div></div>' +
+          '</div>'
+        );
+      }).join("");
+
+      donutContainer.innerHTML =
+        '<div class="panel fade-in">' +
+        '<div class="section-title">🍩 Por categoría (' + monedaPrincipal + ')</div>' +
+        '<div class="donut-wrap">' +
+        '<div class="donut-ring" style="background: conic-gradient(' + segmentos + ');"></div>' +
+        '<div class="donut-hole"><div class="donut-hole-value">' + fmt(totalCat, monedaPrincipal) + '</div>' +
+        '<div class="donut-hole-label">gastado este mes</div></div>' +
+        '</div>' +
+        leyenda +
+        '</div>';
+    }
 
     // ---- Resumen por moneda (ingresos, gastos, balance) ----
     const resumenGrid = document.getElementById("resumen-monedas");
@@ -393,12 +534,13 @@
     } else {
       lista.innerHTML = movimientos.map(function (m) {
         if (m.esIngreso) {
-          return '<div class="row"><div class="dot ingreso"></div><div class="row-main">' +
+          return '<div class="row"><div class="legend-icon" style="background:#67D07A22; color:#67D07A;">💰</div><div class="row-main">' +
             '<div class="row-desc">' + escapeHtml(m.descripcion || "Ingreso") + '</div>' +
             '<div class="row-meta">Ingreso · ' + escapeHtml(m.fecha || "") + '</div></div>' +
             '<div class="row-amount positivo">+' + fmt(m.monto, m.moneda) + '</div></div>';
         }
-        return '<div class="row"><div class="dot ' + dotClass(m.tipo) + '"></div><div class="row-main">' +
+        const cat = categorizar(m.establecimiento, m.tipo);
+        return '<div class="row"><div class="legend-icon" style="background:' + cat.color + '22; color:' + cat.color + ';">' + cat.icono + '</div><div class="row-main">' +
           '<div class="row-desc">' + escapeHtml(m.establecimiento || "Sin identificar") + '</div>' +
           '<div class="row-meta">' + escapeHtml(m.tipo || "") + ' · ' + escapeHtml(m.fecha || "") + '</div></div>' +
           '<div class="row-amount">-' + fmt(m.monto, m.moneda) + '</div></div>';
@@ -488,6 +630,11 @@
     document.getElementById("vista-historial").style.display = tab === "historial" ? "block" : "none";
     document.getElementById("vista-meses").style.display = tab === "meses" ? "block" : "none";
     document.getElementById("vista-deudas").style.display = tab === "deudas" ? "block" : "none";
+
+    const activa = document.getElementById("vista-" + tab);
+    activa.classList.remove("fade-in");
+    void activa.offsetWidth; // fuerza reflow para poder repetir la animación
+    activa.classList.add("fade-in");
   }
 
   async function cerrarMesAhora() {
