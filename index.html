@@ -115,6 +115,12 @@
   .btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
   .btn-primary { background: #4FD1C5; color: #12181C; }
   .btn-secondary { background: #2A313B; color: #C4CBD4; }
+  .deuda-check {
+    width: 22px; height: 22px; border-radius: 6px; border: 2px solid #3A424D;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer;
+    font-size: 14px; color: #12181C;
+  }
+  .deuda-check.marcada { background: #67D07A; border-color: #67D07A; }
 </style>
 </head>
 <body>
@@ -132,6 +138,7 @@
       <div class="tab activa" id="tab-resumen" onclick="cambiarTab('resumen')">Resumen</div>
       <div class="tab" id="tab-historial" onclick="cambiarTab('historial')">Historial</div>
       <div class="tab" id="tab-meses" onclick="cambiarTab('meses')">Por mes</div>
+      <div class="tab" id="tab-deudas" onclick="cambiarTab('deudas')">Deudas</div>
     </div>
 
     <div id="vista-resumen">
@@ -157,6 +164,13 @@
     <div id="vista-meses" style="display:none;">
       <div id="lista-meses"><div class="empty">Aún no hay meses cerrados.</div></div>
     </div>
+
+    <div id="vista-deudas" style="display:none;">
+      <div class="panel" style="text-align:center;">
+        <button class="btn btn-primary" style="width:100%;" onclick="abrirModalDeuda()">+ Agregar deuda o préstamo</button>
+      </div>
+      <div id="lista-deudas"><div class="empty">Cargando...</div></div>
+    </div>
   </div>
 
   <button class="fab" onclick="abrirModal()">+</button>
@@ -173,6 +187,23 @@
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
         <button class="btn btn-primary" onclick="guardarIngreso()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modal-deuda-backdrop">
+    <div class="modal">
+      <h3>Agregar deuda o préstamo</h3>
+      <input class="input" id="input-deuda-desc" placeholder="Descripción (ej. Préstamo heladera)" />
+      <input class="input" id="input-deuda-monto" placeholder="Monto de la cuota" inputmode="decimal" />
+      <select class="input" id="input-deuda-moneda">
+        <option value="UYU">UYU</option>
+        <option value="USD">USD</option>
+      </select>
+      <input class="input" id="input-deuda-cuotas" placeholder="Cantidad total de cuotas (ej. 12)" inputmode="numeric" />
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="cerrarModalDeuda()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarDeuda()">Guardar</button>
       </div>
     </div>
   </div>
@@ -399,15 +430,64 @@
         );
       }).join("");
     }
+
+    // ---- Deudas / préstamos ----
+    const deudas = data.deudas || [];
+    const listaDeudas = document.getElementById("lista-deudas");
+    if (deudas.length === 0) {
+      listaDeudas.innerHTML = '<div class="empty">No tienes deudas o préstamos cargados.</div>';
+    } else {
+      // Las no pagadas primero, las pagadas este mes al final
+      const ordenadas = deudas.slice().sort(function (a, b) {
+        return (a.pagada_este_mes === b.pagada_este_mes) ? 0 : (a.pagada_este_mes ? 1 : -1);
+      });
+
+      const filas = ordenadas.map(function (d) {
+        const marcada = d.pagada_este_mes;
+        return (
+          '<div class="row" style="cursor:pointer;' + (marcada ? ' opacity:0.5;' : '') + '" onclick="marcarCuota(' + d.id + ', ' + (!marcada) + ')">' +
+          '<div class="deuda-check ' + (marcada ? "marcada" : "") + '">' + (marcada ? "✓" : "") + '</div>' +
+          '<div class="row-main">' +
+          '<div class="row-desc">' + escapeHtml(d.descripcion) + '</div>' +
+          '<div class="row-meta">Cuota ' + (d.cuotas_pagadas + 1) + ' de ' + d.cuotas_totales +
+          (marcada ? ' · Pagada este mes' : ' · Pendiente este mes') + '</div>' +
+          '</div>' +
+          '<div class="row-amount">' + fmt(d.monto_cuota, d.moneda) + '</div>' +
+          '</div>'
+        );
+      }).join("");
+
+      // Total pendiente de pagar este mes, por moneda (baja a medida que marcas cuotas)
+      const pendientesPorMoneda = {};
+      deudas.filter((d) => !d.pagada_este_mes).forEach((d) => {
+        const m = d.moneda || "UYU";
+        pendientesPorMoneda[m] = (pendientesPorMoneda[m] || 0) + (parseFloat(d.monto_cuota) || 0);
+      });
+      const totalesHtml = Object.keys(pendientesPorMoneda).length
+        ? Object.entries(pendientesPorMoneda).map(function (par) {
+            return '<div class="top-row"><span>Total pendiente (' + par[0] + ')</span>' +
+              '<span style="font-family:\'JetBrains Mono\',monospace; color:#F26B6B;">' + fmt(par[1], par[0]) + '</span></div>';
+          }).join("")
+        : '<div class="top-row"><span style="color:#67D07A;">Ya pagaste todas las cuotas de este mes 🎉</span></div>';
+
+      listaDeudas.innerHTML =
+        filas +
+        '<div class="panel" style="margin-top:8px;">' +
+        '<div class="section-title" style="margin-bottom:10px;">Total a pagar este mes</div>' +
+        totalesHtml +
+        '</div>';
+    }
   }
 
   function cambiarTab(tab) {
     document.getElementById("tab-resumen").classList.toggle("activa", tab === "resumen");
     document.getElementById("tab-historial").classList.toggle("activa", tab === "historial");
     document.getElementById("tab-meses").classList.toggle("activa", tab === "meses");
+    document.getElementById("tab-deudas").classList.toggle("activa", tab === "deudas");
     document.getElementById("vista-resumen").style.display = tab === "resumen" ? "block" : "none";
     document.getElementById("vista-historial").style.display = tab === "historial" ? "block" : "none";
     document.getElementById("vista-meses").style.display = tab === "meses" ? "block" : "none";
+    document.getElementById("vista-deudas").style.display = tab === "deudas" ? "block" : "none";
   }
 
   async function cerrarMesAhora() {
@@ -433,6 +513,49 @@
   }
   function abrirModalLimite() { document.getElementById("modal-limite-backdrop").classList.add("abierto"); }
   function cerrarModalLimite() { document.getElementById("modal-limite-backdrop").classList.remove("abierto"); }
+
+  function abrirModalDeuda() { document.getElementById("modal-deuda-backdrop").classList.add("abierto"); }
+  function cerrarModalDeuda() {
+    document.getElementById("modal-deuda-backdrop").classList.remove("abierto");
+    document.getElementById("input-deuda-desc").value = "";
+    document.getElementById("input-deuda-monto").value = "";
+    document.getElementById("input-deuda-cuotas").value = "";
+  }
+
+  async function guardarDeuda() {
+    const desc = document.getElementById("input-deuda-desc").value.trim();
+    const monto = parseFloat(document.getElementById("input-deuda-monto").value);
+    const moneda = document.getElementById("input-deuda-moneda").value;
+    const cuotas = parseInt(document.getElementById("input-deuda-cuotas").value, 10);
+    if (!desc || !monto || monto <= 0 || !cuotas || cuotas <= 0) {
+      alert("Completa descripción, monto de cuota y cantidad de cuotas.");
+      return;
+    }
+    try {
+      await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ accion: "agregar_deuda", descripcion: desc, montoCuota: monto, moneda: moneda, cuotasTotales: cuotas }),
+      });
+      cerrarModalDeuda();
+      cargarDatos();
+    } catch (err) {
+      alert("No se pudo guardar la deuda. Intenta de nuevo.");
+    }
+  }
+
+  async function marcarCuota(id, pagada) {
+    try {
+      await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ accion: "marcar_cuota", id: id, pagada: pagada }),
+      });
+      cargarDatos();
+    } catch (err) {
+      alert("No se pudo actualizar la cuota. Intenta de nuevo.");
+    }
+  }
 
   async function guardarIngreso() {
     const desc = document.getElementById("input-desc").value.trim();
