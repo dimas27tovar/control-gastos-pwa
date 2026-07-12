@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#181C22" />
+<title>Control de gastos</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #181C22;
+    color: #E8EAED;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    padding: 24px 16px 80px;
+    padding-top: max(24px, env(safe-area-inset-top));
+  }
+  .wrap { max-width: 480px; margin: 0 auto; }
+  .eyebrow {
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: #6B7684; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace;
+  }
+  .panel {
+    background: #20262E; border: 1px solid #2A313B; border-radius: 14px;
+    padding: 20px 20px 16px; position: relative; overflow: hidden; margin-bottom: 16px;
+  }
+  .panel::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: repeating-linear-gradient(90deg, #4FD1C5 0 8px, transparent 8px 16px);
+    opacity: 0.5;
+  }
+  .balance-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .mini-panel {
+    background: #20262E; border: 1px solid #2A313B; border-radius: 12px; padding: 14px;
+  }
+  .mini-label { font-size: 11px; color: #6B7684; margin-bottom: 4px; }
+  .mini-value { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; }
+  .total-row { display: flex; align-items: baseline; gap: 8px; color: #8B95A1; font-size: 13px; }
+  .total-value {
+    font-family: 'JetBrains Mono', monospace; font-size: 40px; font-weight: 700;
+    margin-top: 4px; letter-spacing: -0.02em; color: #F5F7FA;
+  }
+  .total-sub { font-size: 12px; color: #5C6673; margin-top: 4px; }
+  .section-title {
+    display: flex; align-items: center; gap: 6px; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: #6B7684;
+    margin-bottom: 8px; font-family: 'JetBrains Mono', monospace;
+  }
+  .row {
+    background: #20262E; border: 1px solid #2A313B; border-radius: 12px;
+    padding: 12px 14px; display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #4FD1C5; flex-shrink: 0; }
+  .dot.debito { background: #F0A857; }
+  .dot.transferencia { background: #8B9CF5; }
+  .dot.ingreso { background: #67D07A; }
+  .row-main { flex: 1; min-width: 0; }
+  .row-desc { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-meta { font-size: 11px; color: #5C6673; }
+  .row-amount { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #F5F7FA; white-space: nowrap; }
+  .row-amount.positivo { color: #67D07A; }
+  .empty {
+    background: #20262E; border: 1px dashed #2A313B; border-radius: 14px;
+    padding: 28px 16px; text-align: center; color: #5C6673; font-size: 13px;
+  }
+  .refresh-btn {
+    background: none; border: 1px solid #2A313B; color: #8B95A1; border-radius: 8px;
+    padding: 8px 12px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  }
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid #3A424D; border-top-color: #4FD1C5;
+    border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box {
+    background: #2A1F20; border: 1px solid #4A2E2E; color: #F0A0A0;
+    border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 16px;
+  }
+  .warn-box {
+    background: #2A2620; border: 1px solid #4A3E2E; color: #F0C080;
+    border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 16px;
+  }
+  .bar-bg { height: 6px; background: #181C22; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+  .top-item { margin-bottom: 10px; }
+  .top-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; text-align: center; padding: 8px; border-radius: 8px; font-size: 13px;
+    background: #20262E; border: 1px solid #2A313B; color: #8B95A1; cursor: pointer;
+  }
+  .tab.activa { background: #4FD1C5; color: #12181C; border-color: #4FD1C5; font-weight: 600; }
+  .fab {
+    position: fixed; bottom: 20px; right: 20px; width: 52px; height: 52px; border-radius: 50%;
+    background: #4FD1C5; color: #12181C; border: none; font-size: 26px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;
+  }
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    align-items: flex-end; justify-content: center; z-index: 10;
+  }
+  .modal-backdrop.abierto { display: flex; }
+  .modal {
+    background: #20262E; border-radius: 16px 16px 0 0; padding: 20px; width: 100%; max-width: 480px;
+  }
+  .modal h3 { margin: 0 0 14px; font-size: 16px; }
+  .input {
+    width: 100%; background: #181C22; border: 1px solid #2A313B; border-radius: 8px;
+    padding: 12px; color: #E8EAED; font-size: 14px; margin-bottom: 10px; font-family: inherit;
+  }
+  .modal-actions { display: flex; gap: 10px; margin-top: 6px; }
+  .btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-primary { background: #4FD1C5; color: #12181C; }
+  .btn-secondary { background: #2A313B; color: #C4CBD4; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header-row">
+      <div class="eyebrow">Panel de gastos</div>
+      <button class="refresh-btn" onclick="cargarDatos()">
+        <span id="refresh-icon">↻</span> Actualizar
+      </button>
+    </div>
+
+    <div id="error-container"></div>
+
+    <div class="tabs">
+      <div class="tab activa" id="tab-resumen" onclick="cambiarTab('resumen')">Resumen</div>
+      <div class="tab" id="tab-historial" onclick="cambiarTab('historial')">Historial</div>
+    </div>
+
+    <div id="vista-resumen">
+      <div class="balance-grid">
+        <div class="mini-panel">
+          <div class="mini-label">Ingresos del mes</div>
+          <div class="mini-value" id="ingresos-mes" style="color:#67D07A;">$0</div>
+        </div>
+        <div class="mini-panel">
+          <div class="mini-label">Gastos del mes</div>
+          <div class="mini-value" id="gastos-mes" style="color:#F26B6B;">$0</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="total-row">💰 Balance del mes (ahorro estimado)</div>
+        <div class="total-value" id="balance">$0</div>
+        <div class="total-sub" id="balance-sub">Ingresos − gastos de este mes</div>
+      </div>
+
+      <div id="limite-container"></div>
+
+      <div id="top-container"></div>
+    </div>
+
+    <div id="vista-historial" style="display:none;">
+      <div id="lista"><div class="empty">Cargando tus movimientos...</div></div>
+    </div>
+  </div>
+
+  <button class="fab" onclick="abrirModal()">+</button>
+
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal">
+      <h3>Agregar ingreso</h3>
+      <input class="input" id="input-desc" placeholder="Descripción (ej. Sueldo)" />
+      <input class="input" id="input-monto" placeholder="Monto" inputmode="decimal" />
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarIngreso()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modal-limite-backdrop">
+    <div class="modal">
+      <h3>Límite de gasto mensual</h3>
+      <input class="input" id="input-limite" placeholder="Monto límite (ej. 30000)" inputmode="decimal" />
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="cerrarModalLimite()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarLimite()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Pega aquí la URL de tu Web App de Google Apps Script (termina en /exec)
+  const API_URL = "https://script.google.com/macros/s/AKfycbw9D7uapmuMAdFwHQLZdNfyRGXkQswQU9AR6O9QDNnKT380GUZ3mTieZec0C0magxKq/exec";
+
+  let ultimoDato = { gastos: [], ingresos: [], configuracion: {} };
+
+  function fmt(n, moneda) {
+    try {
+      return new Intl.NumberFormat("es-UY", { style: "currency", currency: moneda || "UYU" }).format(n);
+    } catch (e) {
+      return (moneda || "") + " " + n;
+    }
+  }
+
+  function dotClass(tipo) {
+    if (!tipo) return "";
+    const t = tipo.toLowerCase();
+    if (t.includes("transferencia")) return "transferencia";
+    if (t.includes("d\u00e9bito") || t.includes("debito")) return "debito";
+    return "";
+  }
+
+  function parseFechaLocal(fechaStr) {
+    if (!fechaStr) return null;
+    const partes = String(fechaStr).split("/");
+    if (partes.length !== 3) return null;
+    return new Date(partes[2], partes[1] - 1, partes[0]);
+  }
+
+  function esDelMesActual(fechaStr) {
+    const f = parseFechaLocal(fechaStr);
+    if (!f) return false;
+    const ahora = new Date();
+    return f.getMonth() === ahora.getMonth() && f.getFullYear() === ahora.getFullYear();
+  }
+
+  async function cargarDatos() {
+    const icon = document.getElementById("refresh-icon");
+    icon.innerHTML = '<span class="spinner"></span>';
+    const errorContainer = document.getElementById("error-container");
+    errorContainer.innerHTML = "";
+
+    try {
+      const res = await fetch(API_URL);
+      if (!res.ok) throw new Error("Respuesta no válida del servidor");
+      const data = await res.json();
+      ultimoDato = data;
+      localStorage_set("gastos-cache", JSON.stringify(data));
+      renderizarTodo(data);
+    } catch (err) {
+      errorContainer.innerHTML =
+        '<div class="error-box">No se pudo conectar con tu Google Sheet. Verifica tu conexión a internet. (' +
+        err.message + ")</div>";
+      const cache = localStorage_get("gastos-cache");
+      if (cache) {
+        ultimoDato = JSON.parse(cache);
+        renderizarTodo(ultimoDato);
+      }
+    } finally {
+      icon.textContent = "↻";
+    }
+  }
+
+  function renderizarTodo(data) {
+    const gastos = data.gastos || [];
+    const ingresos = data.ingresos || [];
+    const config = data.configuracion || {};
+    const moneda = (gastos[0] && gastos[0].moneda) || "UYU";
+
+    const gastosDelMes = gastos.filter((g) => esDelMesActual(g.fecha));
+    const ingresosDelMes = ingresos.filter((i) => esDelMesActual(i.fecha));
+
+    const totalGastosMes = gastosDelMes.reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
+    const totalIngresosMes = ingresosDelMes.reduce((s, i) => s + (parseFloat(i.monto) || 0), 0);
+    const balance = totalIngresosMes - totalGastosMes;
+
+    document.getElementById("ingresos-mes").textContent = fmt(totalIngresosMes, moneda);
+    document.getElementById("gastos-mes").textContent = fmt(totalGastosMes, moneda);
+    const balanceEl = document.getElementById("balance");
+    balanceEl.textContent = fmt(balance, moneda);
+    balanceEl.style.color = balance >= 0 ? "#67D07A" : "#F26B6B";
+
+    const limiteContainer = document.getElementById("limite-container");
+    const limite = parseFloat(config.limite_mensual);
+    if (limite && limite > 0) {
+      const porcentaje = Math.min(100, (totalGastosMes / limite) * 100);
+      const color = porcentaje >= 100 ? "#F26B6B" : porcentaje >= 80 ? "#F0A857" : "#4FD1C5";
+      let aviso = "";
+      if (porcentaje >= 100) {
+        aviso = '<div class="warn-box">⚠️ Superaste tu límite mensual de ' + fmt(limite, moneda) + '.</div>';
+      } else if (porcentaje >= 80) {
+        aviso = '<div class="warn-box">Vas en ' + Math.round(porcentaje) + '% de tu límite mensual.</div>';
+      }
+      limiteContainer.innerHTML =
+        aviso +
+        '<div class="panel" onclick="abrirModalLimite()" style="cursor:pointer;">' +
+        '<div class="section-title" style="margin-bottom:10px;">🎯 Límite mensual</div>' +
+        '<div class="top-row"><span>' + fmt(totalGastosMes, moneda) + ' de ' + fmt(limite, moneda) + '</span>' +
+        '<span style="color:' + color + '">' + Math.round(porcentaje) + '%</span></div>' +
+        '<div class="bar-bg"><div class="bar-fill" style="width:' + porcentaje + '%; background:' + color + ';"></div></div>' +
+        '</div>';
+    } else {
+      limiteContainer.innerHTML =
+        '<div class="panel" onclick="abrirModalLimite()" style="cursor:pointer; text-align:center; color:#8B95A1; font-size:13px;">' +
+        '+ Configurar un límite de gasto mensual</div>';
+    }
+
+    const porEstablecimiento = {};
+    gastos.forEach((g) => {
+      const nombre = g.establecimiento || "No identificado";
+      porEstablecimiento[nombre] = (porEstablecimiento[nombre] || 0) + (parseFloat(g.monto) || 0);
+    });
+    const top = Object.entries(porEstablecimiento).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const maxTop = Math.max(1, ...top.map((t) => t[1]));
+
+    const topContainer = document.getElementById("top-container");
+    if (top.length > 0) {
+      topContainer.innerHTML =
+        '<div class="section-title">🏆 Dónde gastas más</div><div class="panel">' +
+        top.map(function (par) {
+          const nombre = par[0], monto = par[1];
+          return '<div class="top-item"><div class="top-row"><span>' + escapeHtml(nombre) +
+            '</span><span style="font-family:\'JetBrains Mono\',monospace; color:#8B95A1;">' + fmt(monto, moneda) + '</span></div>' +
+            '<div class="bar-bg"><div class="bar-fill" style="width:' + ((monto / maxTop) * 100) + '%; background:#4FD1C5;"></div></div></div>';
+        }).join("") +
+        '</div>';
+    } else {
+      topContainer.innerHTML = "";
+    }
+
+    const movimientos = gastos.map(function (g) { return Object.assign({}, g, { esIngreso: false }); })
+      .concat(ingresos.map(function (i) { return Object.assign({}, i, { esIngreso: true }); }))
+      .sort(function (a, b) {
+        const fa = parseFechaLocal(a.fecha) || new Date(0);
+        const fb = parseFechaLocal(b.fecha) || new Date(0);
+        return fb - fa;
+      });
+
+    const lista = document.getElementById("lista");
+    if (movimientos.length === 0) {
+      lista.innerHTML = '<div class="empty">Aún no hay movimientos registrados.</div>';
+    } else {
+      lista.innerHTML = movimientos.map(function (m) {
+        if (m.esIngreso) {
+          return '<div class="row"><div class="dot ingreso"></div><div class="row-main">' +
+            '<div class="row-desc">' + escapeHtml(m.descripcion || "Ingreso") + '</div>' +
+            '<div class="row-meta">Ingreso · ' + escapeHtml(m.fecha || "") + '</div></div>' +
+            '<div class="row-amount positivo">+' + fmt(m.monto, m.moneda) + '</div></div>';
+        }
+        return '<div class="row"><div class="dot ' + dotClass(m.tipo) + '"></div><div class="row-main">' +
+          '<div class="row-desc">' + escapeHtml(m.establecimiento || "Sin identificar") + '</div>' +
+          '<div class="row-meta">' + escapeHtml(m.tipo || "") + ' · ' + escapeHtml(m.fecha || "") + '</div></div>' +
+          '<div class="row-amount">-' + fmt(m.monto, m.moneda) + '</div></div>';
+      }).join("");
+    }
+  }
+
+  function cambiarTab(tab) {
+    document.getElementById("tab-resumen").classList.toggle("activa", tab === "resumen");
+    document.getElementById("tab-historial").classList.toggle("activa", tab === "historial");
+    document.getElementById("vista-resumen").style.display = tab === "resumen" ? "block" : "none";
+    document.getElementById("vista-historial").style.display = tab === "historial" ? "block" : "none";
+  }
+
+  function abrirModal() { document.getElementById("modal-backdrop").classList.add("abierto"); }
+  function cerrarModal() {
+    document.getElementById("modal-backdrop").classList.remove("abierto");
+    document.getElementById("input-desc").value = "";
+    document.getElementById("input-monto").value = "";
+  }
+  function abrirModalLimite() { document.getElementById("modal-limite-backdrop").classList.add("abierto"); }
+  function cerrarModalLimite() { document.getElementById("modal-limite-backdrop").classList.remove("abierto"); }
+
+  async function guardarIngreso() {
+    const desc = document.getElementById("input-desc").value.trim();
+    const monto = parseFloat(document.getElementById("input-monto").value);
+    if (!desc || !monto || monto <= 0) { alert("Completa una descripción y un monto válido."); return; }
+    try {
+      await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ accion: "agregar_ingreso", descripcion: desc, monto: monto, moneda: "UYU" }),
+      });
+      cerrarModal();
+      cargarDatos();
+    } catch (err) {
+      alert("No se pudo guardar el ingreso. Intenta de nuevo.");
+    }
+  }
+
+  async function guardarLimite() {
+    const limite = parseFloat(document.getElementById("input-limite").value);
+    if (!limite || limite <= 0) { alert("Ingresa un monto válido."); return; }
+    try {
+      await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ accion: "actualizar_limite", limite: limite }),
+      });
+      cerrarModalLimite();
+      cargarDatos();
+    } catch (err) {
+      alert("No se pudo guardar el límite. Intenta de nuevo.");
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+  function localStorage_set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function localStorage_get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  cargarDatos();
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+</script>
+</body>
+</html>
